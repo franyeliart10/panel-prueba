@@ -1,8 +1,13 @@
+// Configuración de conexión con Supabase
+const SUPABASE_URL = "https://ysyfycngjqgitwyfxeto.supabase.co";
+const SUPABASE_ANON_KEY = "sb_secret_eYR6k9lZupclBDdDQZPluA_oZMrmCRN";
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 document.addEventListener('DOMContentLoaded', () => {
 
-    // --- BASE DE DATOS LOCAL (TOTALMENTE EN BLANCO) ---
-    let families = JSON.parse(localStorage.getItem('franyeli_families')) || [];
-    let persons = JSON.parse(localStorage.getItem('franyeli_persons')) || [];
+    let families = [];
+    let persons = [];
     let tables = JSON.parse(localStorage.getItem('franyeli_tables')) || [];
 
     // --- PESTAÑAS ---
@@ -20,20 +25,37 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // --- RENDERIZADO Y MÉTRICAS ---
+    // --- CARGAR DATOS DESDE SUPABASE ---
+    async function fetchAllData() {
+        try {
+            // Consultar familias
+            const { data: famData, error: famErr } = await supabaseClient
+                .from('families')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (!famErr && famData) families = famData;
+
+            // Consultar personas
+            const { data: perData, error: perErr } = await supabaseClient
+                .from('persons')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (!perErr && perData) persons = perData;
+
+            renderAll();
+        } catch (err) {
+            console.error("Error cargando datos de Supabase:", err);
+        }
+    }
+
     function renderAll() {
-        saveData();
         calculateMetrics();
         renderNominativasTable();
         renderGuestTable();
         renderSeatingSidebar();
         renderTablesOnCanvas();
-    }
-
-    function saveData() {
-        localStorage.setItem('franyeli_families', JSON.stringify(families));
-        localStorage.setItem('franyeli_persons', JSON.stringify(persons));
-        localStorage.setItem('franyeli_tables', JSON.stringify(tables));
     }
 
     function calculateMetrics() {
@@ -50,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 totalAsisten++;
                 if (p.type === 'Adulto') totalAdultos++;
                 else totalNinos++;
-                if (p.checkedIn) totalCheckedIn++;
+                if (p.checked_in) totalCheckedIn++;
             }
         });
 
@@ -60,19 +82,20 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (f.status === 'rechazado') totalRechazados++;
         });
 
-        document.getElementById('metric-asisten').textContent = totalAsisten;
-        document.getElementById('metric-adultos').textContent = totalAdultos;
-        document.getElementById('metric-ninos').textContent = totalNinos;
-        document.getElementById('metric-checkin').textContent = totalCheckedIn;
-        document.getElementById('metric-checkin-total').textContent = totalAsisten;
-        document.getElementById('metric-pendientes').textContent = totalPendientes;
-        document.getElementById('metric-confirmados-card').textContent = totalConfirmados;
-        document.getElementById('metric-rechazados').textContent = totalRechazados;
+        if (document.getElementById('metric-asisten')) document.getElementById('metric-asisten').textContent = totalAsisten;
+        if (document.getElementById('metric-adultos')) document.getElementById('metric-adultos').textContent = totalAdultos;
+        if (document.getElementById('metric-ninos')) document.getElementById('metric-ninos').textContent = totalNinos;
+        if (document.getElementById('metric-checkin')) document.getElementById('metric-checkin').textContent = totalCheckedIn;
+        if (document.getElementById('metric-checkin-total')) document.getElementById('metric-checkin-total').textContent = totalAsisten;
+        if (document.getElementById('metric-pendientes')) document.getElementById('metric-pendientes').textContent = totalPendientes;
+        if (document.getElementById('metric-confirmados-card')) document.getElementById('metric-confirmados-card').textContent = totalConfirmados;
+        if (document.getElementById('metric-rechazados')) document.getElementById('metric-rechazados').textContent = totalRechazados;
     }
 
     // Pestaña 1: Pases por Familia
     function renderNominativasTable() {
         const tbody = document.getElementById('nominativas-list-body');
+        if (!tbody) return;
         tbody.innerHTML = '';
 
         if (families.length === 0) {
@@ -117,12 +140,11 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         });
         tbody.querySelectorAll('.btn-delete').forEach(b => {
-            b.onclick = (e) => {
+            b.onclick = async (e) => {
                 const id = e.target.getAttribute('data-id');
-                if (confirm('¿Eliminar este pase familiar?')) {
-                    families = families.filter(f => f.id !== id);
-                    persons = persons.filter(p => p.familyId !== id);
-                    renderAll();
+                if (confirm('¿Eliminar este pase familiar de la base de datos?')) {
+                    await supabaseClient.from('families').delete().eq('id', id);
+                    fetchAllData();
                 }
             };
         });
@@ -131,12 +153,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Pestaña 2: Lista de Personas & Check-in
     function renderGuestTable() {
         const tbody = document.getElementById('guest-list-body');
-        const filter = document.getElementById('filter-status').value;
-        const searchQuery = document.getElementById('search-input').value.toLowerCase();
+        if (!tbody) return;
+        const filter = document.getElementById('filter-status') ? document.getElementById('filter-status').value : 'all';
+        const searchQuery = document.getElementById('search-input') ? document.getElementById('search-input').value.toLowerCase() : '';
         tbody.innerHTML = '';
 
         if (persons.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #7b7893; padding: 20px;">La lista de personas se llenará automáticamente a medida que las familias confirmen.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #7b7893; padding: 20px;">La lista de personas se llenará automáticamente cuando las familias confirmen en la invitación.</td></tr>';
             return;
         }
 
@@ -146,12 +169,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (filter === 'rechazados' && p.status !== 'rechazado') return;
 
             const matchesSearch = p.name.toLowerCase().includes(searchQuery) ||
-                                  p.familyName.toLowerCase().includes(searchQuery);
+                                  (p.family_name && p.family_name.toLowerCase().includes(searchQuery));
 
             if (!matchesSearch) return;
 
             const tr = document.createElement('tr');
-            const checkinBtn = p.checkedIn ? 
+            const checkinBtn = p.checked_in ? 
                 `<button class="btn-checkin checked" data-id="${p.id}">🚪 En Fiesta</button>` : 
                 `<button class="btn-checkin pending" data-id="${p.id}">🎟️ Marcar Llegada</button>`;
 
@@ -162,8 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
             tr.innerHTML = `
                 <td>${checkinBtn}</td>
                 <td><strong>${p.name}</strong></td>
-                <td><small>${p.type}</small></td>
-                <td><small>${p.familyName}</small></td>
+                <td><small>${p.type || 'Adulto'}</small></td>
+                <td><small>${p.family_name || '—'}</small></td>
                 <td>${statusTag}</td>
                 <td><button class="btn-delete" data-id="${p.id}">🗑️</button></td>
             `;
@@ -171,126 +194,137 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         tbody.querySelectorAll('.btn-checkin').forEach(btn => {
-            btn.onclick = (e) => {
+            btn.onclick = async (e) => {
                 const id = e.target.getAttribute('data-id');
                 const person = persons.find(p => p.id === id);
                 if (person) {
-                    person.checkedIn = !person.checkedIn;
-                    renderAll();
+                    const newCheckedState = !person.checked_in;
+                    await supabaseClient.from('persons').update({ checked_in: newCheckedState }).eq('id', id);
+                    fetchAllData();
                 }
             };
         });
 
         tbody.querySelectorAll('.btn-delete').forEach(btn => {
-            btn.onclick = (e) => {
+            btn.onclick = async (e) => {
                 const id = e.target.getAttribute('data-id');
                 if (confirm('¿Eliminar a esta persona?')) {
-                    persons = persons.filter(p => p.id !== id);
-                    renderAll();
+                    await supabaseClient.from('persons').delete().eq('id', id);
+                    fetchAllData();
                 }
             };
         });
     }
 
-    // Modal Crear Pase
+    // Modal Crear Pase Familiar
     const modalFam = document.getElementById('modal-family');
     const btnOpenModalFam = document.getElementById('btn-open-modal-family');
     const btnCloseModalFam = document.getElementById('btn-close-modal-family');
     const formFamily = document.getElementById('form-family');
 
     if (btnOpenModalFam) btnOpenModalFam.onclick = () => modalFam.style.display = 'flex';
-    btnCloseModalFam.onclick = () => modalFam.style.display = 'none';
+    if (btnCloseModalFam) btnCloseModalFam.onclick = () => modalFam.style.display = 'none';
 
-    formFamily.onsubmit = (e) => {
-        e.preventDefault();
-        const newFam = {
-            id: 'fam_' + Date.now(),
-            name: document.getElementById('modal-family-title').value,
-            phone: document.getElementById('modal-family-phone').value,
-            adults: parseInt(document.getElementById('modal-family-adults').value) || 1,
-            kids: parseInt(document.getElementById('modal-family-kids').value) || 0,
-            members: document.getElementById('modal-family-members').value,
-            status: 'pendiente'
+    if (formFamily) {
+        formFamily.onsubmit = async (e) => {
+            e.preventDefault();
+            const newFam = {
+                id: 'fam_' + Date.now(),
+                name: document.getElementById('modal-family-title').value,
+                phone: document.getElementById('modal-family-phone').value,
+                adults: parseInt(document.getElementById('modal-family-adults').value) || 1,
+                kids: parseInt(document.getElementById('modal-family-kids').value) || 0,
+                members: document.getElementById('modal-family-members').value,
+                status: 'pendiente'
+            };
+
+            await supabaseClient.from('families').insert(newFam);
+            modalFam.style.display = 'none';
+            formFamily.reset();
+            fetchAllData();
         };
+    }
 
-        families.push(newFam);
-        modalFam.style.display = 'none';
-        formFamily.reset();
-        renderAll();
-    };
-
-    // Excel Input
+    // Cargar Excel de Pases a Supabase
     const fileInput = document.getElementById('excel-file-input');
-    fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            const data = new Uint8Array(evt.target.result);
-            const workbook = XLSX.read(data, { type: 'array' });
-            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-            const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+            const reader = new FileReader();
+            reader.onload = async (evt) => {
+                const data = new Uint8Array(evt.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
 
-            jsonData.forEach((row, idx) => {
-                families.push({
-                    id: 'fam_' + Date.now() + '_' + idx,
-                    name: row['Familia'] || row['Nombre'] || 'Familia ' + (idx + 1),
-                    phone: row['Telefono'] || row['Teléfono'] || '',
-                    adults: parseInt(row['Adultos']) || 1,
-                    kids: parseInt(row['Niños'] || row['Ninos']) || 0,
-                    members: row['Nombres'] || row['Integrantes'] || '',
-                    status: 'pendiente'
-                });
-            });
+                for (let idx = 0; idx < jsonData.length; idx++) {
+                    const row = jsonData[idx];
+                    await supabaseClient.from('families').insert({
+                        id: 'fam_' + Date.now() + '_' + idx,
+                        name: row['Familia'] || row['Nombre'] || 'Familia ' + (idx + 1),
+                        phone: row['Telefono'] || row['Teléfono'] || '',
+                        adults: parseInt(row['Adultos']) || 1,
+                        kids: parseInt(row['Niños'] || row['Ninos']) || 0,
+                        members: row['Nombres'] || row['Integrantes'] || '',
+                        status: 'pendiente'
+                    });
+                }
 
-            renderAll();
-            alert(`¡Se cargaron ${jsonData.length} pases familiares desde Excel!`);
-        };
-        reader.readAsArrayBuffer(file);
-    });
+                fetchAllData();
+                alert(`¡Se cargaron ${jsonData.length} pases familiares en Supabase!`);
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    }
 
     // Exportadores
-    document.getElementById('btn-export-pases').onclick = () => {
-        const exportData = families.map(f => ({
-            'Familia / Pase': f.name,
-            'Teléfono': f.phone,
-            'Integrantes': f.members,
-            'Adultos': f.adults,
-            'Niños': f.kids,
-            'Estado': f.status,
-            'Enlace': `${window.location.origin}/invitacion.html?to=${f.id}`
-        }));
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Pases Familares");
-        XLSX.writeFile(wb, "Pases_Familiares_Evento.xlsx");
-    };
+    if (document.getElementById('btn-export-pases')) {
+        document.getElementById('btn-export-pases').onclick = () => {
+            const exportData = families.map(f => ({
+                'Familia / Pase': f.name,
+                'Teléfono': f.phone,
+                'Integrantes': f.members,
+                'Adultos': f.adults,
+                'Niños': f.kids,
+                'Estado': f.status,
+                'Enlace': `${window.location.origin}/invitacion.html?to=${f.id}`
+            }));
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Pases Familares");
+            XLSX.writeFile(wb, "Pases_Familiares_Evento.xlsx");
+        };
+    }
 
-    document.getElementById('btn-export-excel').onclick = () => {
-        const exportData = persons.map(p => ({
-            'Nombre Persona': p.name,
-            'Familia': p.familyName,
-            'Asiste': p.status,
-            'En Fiesta (Check-in)': p.checkedIn ? 'Sí' : 'No'
-        }));
-        const ws = XLSX.utils.json_to_sheet(exportData);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Personas Confirmadas");
-        XLSX.writeFile(wb, "Lista_Personas_Evento.xlsx");
-    };
+    if (document.getElementById('btn-export-excel')) {
+        document.getElementById('btn-export-excel').onclick = () => {
+            const exportData = persons.map(p => ({
+                'Nombre Persona': p.name,
+                'Familia': p.family_name,
+                'Asiste': p.status,
+                'En Fiesta (Check-in)': p.checked_in ? 'Sí' : 'No'
+            }));
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Personas Confirmadas");
+            XLSX.writeFile(wb, "Lista_Personas_Evento.xlsx");
+        };
+    }
 
-    document.getElementById('filter-status').onchange = renderGuestTable;
-    document.getElementById('search-input').oninput = renderGuestTable;
+    if (document.getElementById('filter-status')) document.getElementById('filter-status').onchange = renderGuestTable;
+    if (document.getElementById('search-input')) document.getElementById('search-input').oninput = renderGuestTable;
 
     // --- SEATING PLAN ---
     let draggedPersonId = null;
 
     function renderSeatingSidebar() {
         const container = document.getElementById('unassigned-guests');
+        if (!container) return;
         container.innerHTML = '';
 
-        const unassigned = persons.filter(p => p.status === 'confirmado' && !p.table);
+        const unassigned = persons.filter(p => p.status === 'confirmado' && !p.table_id);
         if (unassigned.length === 0) {
             container.innerHTML = '<small style="color: #1e824c;">No hay personas pendientes por sentar.</small>';
             return;
@@ -301,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.className = 'guest-card';
             card.draggable = true;
             card.setAttribute('data-id', p.id);
-            card.innerHTML = `<strong>${p.name}</strong> <small>${p.type} (${p.familyName})</small>`;
+            card.innerHTML = `<strong>${p.name}</strong> <small>${p.type || 'Adulto'} (${p.family_name || 'Familia'})</small>`;
 
             card.addEventListener('dragstart', (e) => {
                 draggedPersonId = p.id;
@@ -322,15 +356,17 @@ document.addEventListener('DOMContentLoaded', () => {
             capacity: 10
         };
         tables.push(newTable);
+        localStorage.setItem('franyeli_tables', JSON.stringify(tables));
         renderAll();
     }
 
-    document.getElementById('btn-table-redonda').onclick = () => createTable('round');
-    document.getElementById('btn-table-rect').onclick = () => createTable('rectangular');
-    document.getElementById('btn-table-cuadrada').onclick = () => createTable('square');
+    if (document.getElementById('btn-table-redonda')) document.getElementById('btn-table-redonda').onclick = () => createTable('round');
+    if (document.getElementById('btn-table-rect')) document.getElementById('btn-table-rect').onclick = () => createTable('rectangular');
+    if (document.getElementById('btn-table-cuadrada')) document.getElementById('btn-table-cuadrada').onclick = () => createTable('square');
 
     function renderTablesOnCanvas() {
         const canvas = document.getElementById('tables-layer');
+        if (!canvas) return;
         canvas.innerHTML = '';
 
         tables.forEach(t => {
@@ -339,18 +375,18 @@ document.addEventListener('DOMContentLoaded', () => {
             tableDiv.style.top = `${t.top}px`;
             tableDiv.style.left = `${t.left}px`;
 
-            const showTableNames = document.getElementById('chk-tablenames').checked;
-            const showFullNames = document.getElementById('chk-fullnames').checked;
+            const showTableNames = document.getElementById('chk-tablenames') ? document.getElementById('chk-tablenames').checked : true;
+            const showFullNames = document.getElementById('chk-fullnames') ? document.getElementById('chk-fullnames').checked : false;
 
             let seatsHtml = '';
             for (let i = 1; i <= t.capacity; i++) {
-                const assigned = persons.find(p => p.table === t.id && p.seat === i);
+                const assigned = persons.find(p => p.table_id === t.id && p.seat === i);
                 let label = i;
                 let title = `Asiento ${i} (Vacío)`;
 
                 if (assigned) {
                     label = showFullNames ? assigned.name.substring(0, 4) : assigned.name.charAt(0).toUpperCase();
-                    title = `${assigned.name} (${assigned.familyName}) - Clic para liberar`;
+                    title = `${assigned.name} (${assigned.family_name || ''}) - Clic para liberar`;
                 }
 
                 seatsHtml += `<div class="seat ${assigned ? 'occupied' : ''}" data-table="${t.id}" data-seat="${i}" data-person="${assigned ? assigned.id : ''}" title="${title}">${label}</div>`;
@@ -363,30 +399,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
             tableDiv.querySelectorAll('.seat').forEach(s => {
                 s.addEventListener('dragover', (e) => e.preventDefault());
-                s.addEventListener('drop', (e) => {
+                s.addEventListener('drop', async (e) => {
                     e.preventDefault();
                     const tableId = s.getAttribute('data-table');
                     const seatNum = parseInt(s.getAttribute('data-seat'));
 
                     if (draggedPersonId) {
-                        const person = persons.find(p => p.id === draggedPersonId);
-                        if (person) {
-                            person.table = tableId;
-                            person.seat = seatNum;
-                            draggedPersonId = null;
-                            renderAll();
-                        }
+                        await supabaseClient
+                            .from('persons')
+                            .update({ table_id: tableId, seat: seatNum })
+                            .eq('id', draggedPersonId);
+
+                        draggedPersonId = null;
+                        fetchAllData();
                     }
                 });
 
-                s.addEventListener('click', () => {
+                s.addEventListener('click', async () => {
                     const personId = s.getAttribute('data-person');
                     if (personId) {
                         const person = persons.find(p => p.id === personId);
                         if (person && confirm(`¿Deseas quitar a ${person.name} de esta mesa?`)) {
-                            person.table = null;
-                            person.seat = null;
-                            renderAll();
+                            await supabaseClient
+                                .from('persons')
+                                .update({ table_id: null, seat: null })
+                                .eq('id', personId);
+
+                            fetchAllData();
                         }
                     }
                 });
@@ -409,7 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.onmousemove = null;
                 tableObj.top = elm.offsetTop;
                 tableObj.left = elm.offsetLeft;
-                saveData();
+                localStorage.setItem('franyeli_tables', JSON.stringify(tables));
             };
             document.onmousemove = (e) => {
                 e.preventDefault();
@@ -424,8 +463,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     ['chk-fullnames', 'chk-tablenames'].forEach(id => {
-        document.getElementById(id).onchange = renderTablesOnCanvas;
+        if (document.getElementById(id)) document.getElementById(id).onchange = renderTablesOnCanvas;
     });
 
-    renderAll();
+    // Iniciar consulta de datos
+    fetchAllData();
 });
