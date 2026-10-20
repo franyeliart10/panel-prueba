@@ -1,6 +1,6 @@
 // Configuración de conexión con Supabase
 const SUPABASE_URL = "https://ysyfycngjqgitwyfxeto.supabase.co";
-const SUPABASE_ANON_KEY = "sb_secret_eYR6k9lZupclBDdDQZPluA_oZMrmCRN";
+const SUPABASE_ANON_KEY = "sb_publishable_Iia_Z9ntId059eDGqNkwwQ_acEH6cPD";
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
