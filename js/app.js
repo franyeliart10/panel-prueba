@@ -1,14 +1,27 @@
-// Configuración de conexión con Supabase
-const SUPABASE_URL = "https://ysyfycngjqgitwyfxeto.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_Iia_Z9ntId059eDGqNkwwQ_acEH6cPD";
-
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 document.addEventListener('DOMContentLoaded', () => {
 
-    let families = [];
-    let persons = [];
-    let tables = JSON.parse(localStorage.getItem('franyeli_tables')) || [];
+    // --- DATOS DE EJEMPLO PARA LA DEMO ---
+    let families = JSON.parse(localStorage.getItem('franyeli_families')) || [
+        { id: 'fam_1', name: 'Familia Rodríguez', phone: '584129000510', adults: 2, kids: 1, members: 'Carlos Rodríguez, María Pérez, Sofía Rodríguez', status: 'confirmado' },
+        { id: 'fam_2', name: 'Tío Mario y Acompañante', phone: '58414000000', adults: 2, kids: 0, members: 'Mario Gómez, Elena de Gómez', status: 'confirmado' },
+        { id: 'fam_3', name: 'Grupo Amigas Estudio', phone: '58412000000', adults: 3, kids: 0, members: 'Camila Sosa, Andrea Blanco, Valeria Rivas', status: 'pendiente' },
+        { id: 'fam_4', name: 'Familia Mendoza', phone: '58416000000', adults: 2, kids: 2, members: 'José Mendoza, Lucía Mendoza, Mateo Mendoza, Lucas Mendoza', status: 'rechazado' }
+    ];
+
+    let persons = JSON.parse(localStorage.getItem('franyeli_persons')) || [
+        { id: 'p_1', family_id: 'fam_1', family_name: 'Familia Rodríguez', name: 'Carlos Rodríguez', type: 'Adulto', status: 'confirmado', checked_in: true, table_id: 'table_1', seat: 1 },
+        { id: 'p_2', family_id: 'fam_1', family_name: 'Familia Rodríguez', name: 'María Pérez', type: 'Adulto', status: 'confirmado', checked_in: false, table_id: 'table_1', seat: 2 },
+        { id: 'p_3', family_id: 'fam_1', family_name: 'Familia Rodríguez', name: 'Sofía Rodríguez', type: 'Niño', status: 'confirmado', checked_in: false, table_id: null, seat: null },
+        { id: 'p_4', family_id: 'fam_2', family_name: 'Tío Mario y Acompañante', name: 'Mario Gómez', type: 'Adulto', status: 'confirmado', checked_in: true, table_id: 'table_1', seat: 3 },
+        { id: 'p_5', family_id: 'fam_2', family_name: 'Tío Mario y Acompañante', name: 'Elena de Gómez', type: 'Adulto', status: 'confirmado', checked_in: false, table_id: null, seat: null },
+        { id: 'p_6', family_id: 'fam_3', family_name: 'Grupo Amigas Estudio', name: 'Camila Sosa', type: 'Adulto', status: 'pendiente', checked_in: false, table_id: null, seat: null },
+        { id: 'p_7', family_id: 'fam_3', family_name: 'Grupo Amigas Estudio', name: 'Andrea Blanco', type: 'Adulto', status: 'pendiente', checked_in: false, table_id: null, seat: null },
+        { id: 'p_8', family_id: 'fam_3', family_name: 'Grupo Amigas Estudio', name: 'Valeria Rivas', type: 'Adulto', status: 'pendiente', checked_in: false, table_id: null, seat: null }
+    ];
+
+    let tables = JSON.parse(localStorage.getItem('franyeli_tables')) || [
+        { id: 'table_1', name: 'Mesa Principal VIP', type: 'round', top: 60, left: 60, capacity: 10 }
+    ];
 
     // --- PESTAÑAS ---
     const navButtons = document.querySelectorAll('.nav-btn');
@@ -21,36 +34,19 @@ document.addEventListener('DOMContentLoaded', () => {
             tabPanes.forEach(pane => pane.classList.remove('active'));
 
             button.classList.add('active');
-            document.getElementById(`tab-${targetTab}`).classList.add('active');
+            const targetPane = document.getElementById(`tab-${targetTab}`);
+            if (targetPane) targetPane.classList.add('active');
         });
     });
 
-    // --- CARGAR DATOS DESDE SUPABASE ---
-    async function fetchAllData() {
-        try {
-            // Consultar familias
-            const { data: famData, error: famErr } = await supabaseClient
-                .from('families')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (!famErr && famData) families = famData;
-
-            // Consultar personas
-            const { data: perData, error: perErr } = await supabaseClient
-                .from('persons')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (!perErr && perData) persons = perData;
-
-            renderAll();
-        } catch (err) {
-            console.error("Error cargando datos de Supabase:", err);
-        }
+    function saveData() {
+        localStorage.setItem('franyeli_families', JSON.stringify(families));
+        localStorage.setItem('franyeli_persons', JSON.stringify(persons));
+        localStorage.setItem('franyeli_tables', JSON.stringify(tables));
     }
 
     function renderAll() {
+        saveData();
         calculateMetrics();
         renderNominativasTable();
         renderGuestTable();
@@ -59,19 +55,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function calculateMetrics() {
-        let totalAsisten = 0;
-        let totalAdultos = 0;
-        let totalNinos = 0;
-        let totalPendientes = 0;
-        let totalConfirmados = 0;
-        let totalRechazados = 0;
-        let totalCheckedIn = 0;
+        let totalAsisten = 0, totalAdultos = 0, totalNinos = 0;
+        let totalPendientes = 0, totalConfirmados = 0, totalRechazados = 0, totalCheckedIn = 0;
 
         persons.forEach(p => {
             if (p.status === 'confirmado') {
                 totalAsisten++;
-                if (p.type === 'Adulto') totalAdultos++;
-                else totalNinos++;
+                if (p.type === 'Niño' || p.type === 'Niños') totalNinos++; else totalAdultos++;
                 if (p.checked_in) totalCheckedIn++;
             }
         });
@@ -98,11 +88,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!tbody) return;
         tbody.innerHTML = '';
 
-        if (families.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #7b7893; padding: 20px;">Aún no has añadido pases. Haz clic en "+ CREAR PASE FAMILIAR" o sube un Excel.</td></tr>';
-            return;
-        }
-
         families.forEach((f) => {
             const tr = document.createElement('tr');
             const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
@@ -111,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
                               f.status === 'pendiente' ? '⏳ Pendiente' : '❌ Rechazado';
 
             const phone = f.phone ? f.phone.replace(/[^0-9]/g, '') : '';
-            const message = encodeURIComponent(`¡Hola ${f.name}! 👋🏻 Te compartimos tu invitación digital. Por favor confirma la asistencia de tus integrantes aquí: ${link}`);
+            const message = encodeURIComponent(`¡Hola ${f.name}! 👋🏻 Te compartimos tu invitación digital: ${link}`);
             const whatsappUrl = phone ? `https://wa.me/${phone}?text=${message}` : `https://wa.me/?text=${message}`;
 
             tr.innerHTML = `
@@ -130,23 +115,18 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.appendChild(tr);
         });
 
-        tbody.querySelectorAll('.btn-ws').forEach(b => {
-            b.onclick = (e) => window.open(e.target.getAttribute('data-url'), '_blank');
+        tbody.querySelectorAll('.btn-ws').forEach(b => b.onclick = (e) => window.open(e.target.getAttribute('data-url'), '_blank'));
+        tbody.querySelectorAll('.btn-copy').forEach(b => b.onclick = (e) => {
+            navigator.clipboard.writeText(e.target.getAttribute('data-link'));
+            alert('¡Enlace copiado al portapapeles!');
         });
-        tbody.querySelectorAll('.btn-copy').forEach(b => {
-            b.onclick = (e) => {
-                navigator.clipboard.writeText(e.target.getAttribute('data-link'));
-                alert('¡Enlace copiado al portapapeles!');
-            };
-        });
-        tbody.querySelectorAll('.btn-delete').forEach(b => {
-            b.onclick = async (e) => {
-                const id = e.target.getAttribute('data-id');
-                if (confirm('¿Eliminar este pase familiar de la base de datos?')) {
-                    await supabaseClient.from('families').delete().eq('id', id);
-                    fetchAllData();
-                }
-            };
+        tbody.querySelectorAll('.btn-delete').forEach(b => b.onclick = (e) => {
+            const id = e.target.getAttribute('data-id');
+            if (confirm('¿Eliminar este pase?')) {
+                families = families.filter(f => f.id !== id);
+                persons = persons.filter(p => p.family_id !== id);
+                renderAll();
+            }
         });
     }
 
@@ -158,19 +138,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const searchQuery = document.getElementById('search-input') ? document.getElementById('search-input').value.toLowerCase() : '';
         tbody.innerHTML = '';
 
-        if (persons.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #7b7893; padding: 20px;">La lista de personas se llenará automáticamente cuando las familias confirmen en la invitación.</td></tr>';
-            return;
-        }
-
         persons.forEach((p) => {
             if (filter === 'confirmados' && p.status !== 'confirmado') return;
             if (filter === 'pendientes' && p.status !== 'pendiente') return;
             if (filter === 'rechazados' && p.status !== 'rechazado') return;
 
-            const matchesSearch = p.name.toLowerCase().includes(searchQuery) ||
-                                  (p.family_name && p.family_name.toLowerCase().includes(searchQuery));
-
+            const matchesSearch = p.name.toLowerCase().includes(searchQuery) || (p.family_name && p.family_name.toLowerCase().includes(searchQuery));
             if (!matchesSearch) return;
 
             const tr = document.createElement('tr');
@@ -193,123 +166,75 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.appendChild(tr);
         });
 
-        tbody.querySelectorAll('.btn-checkin').forEach(btn => {
-            btn.onclick = async (e) => {
-                const id = e.target.getAttribute('data-id');
-                const person = persons.find(p => p.id === id);
-                if (person) {
-                    const newCheckedState = !person.checked_in;
-                    await supabaseClient.from('persons').update({ checked_in: newCheckedState }).eq('id', id);
-                    fetchAllData();
-                }
-            };
+        tbody.querySelectorAll('.btn-checkin').forEach(btn => btn.onclick = (e) => {
+            const id = e.target.getAttribute('data-id');
+            const person = persons.find(p => p.id === id);
+            if (person) {
+                person.checked_in = !person.checked_in;
+                renderAll();
+            }
         });
 
-        tbody.querySelectorAll('.btn-delete').forEach(btn => {
-            btn.onclick = async (e) => {
-                const id = e.target.getAttribute('data-id');
-                if (confirm('¿Eliminar a esta persona?')) {
-                    await supabaseClient.from('persons').delete().eq('id', id);
-                    fetchAllData();
-                }
-            };
+        tbody.querySelectorAll('.btn-delete').forEach(btn => btn.onclick = (e) => {
+            const id = e.target.getAttribute('data-id');
+            if (confirm('¿Eliminar a esta persona?')) {
+                persons = persons.filter(p => p.id !== id);
+                renderAll();
+            }
         });
     }
 
-    // Modal Crear Pase Familiar
+    // Modal Crear Pase
     const modalFam = document.getElementById('modal-family');
     const btnOpenModalFam = document.getElementById('btn-open-modal-family');
     const btnCloseModalFam = document.getElementById('btn-close-modal-family');
     const formFamily = document.getElementById('form-family');
 
-    if (btnOpenModalFam) btnOpenModalFam.onclick = () => modalFam.style.display = 'flex';
-    if (btnCloseModalFam) btnCloseModalFam.onclick = () => modalFam.style.display = 'none';
+    if (btnOpenModalFam) btnOpenModalFam.onclick = () => { if (modalFam) modalFam.style.display = 'flex'; };
+    if (btnCloseModalFam) btnCloseModalFam.onclick = () => { if (modalFam) modalFam.style.display = 'none'; };
 
     if (formFamily) {
-        formFamily.onsubmit = async (e) => {
+        formFamily.onsubmit = (e) => {
             e.preventDefault();
+            const famName = document.getElementById('modal-family-title').value;
+            const famPhone = document.getElementById('modal-family-phone').value;
+            const famAdults = parseInt(document.getElementById('modal-family-adults').value) || 1;
+            const famKids = parseInt(document.getElementById('modal-family-kids').value) || 0;
+            const famMembers = document.getElementById('modal-family-members').value;
+
             const newFam = {
                 id: 'fam_' + Date.now(),
-                name: document.getElementById('modal-family-title').value,
-                phone: document.getElementById('modal-family-phone').value,
-                adults: parseInt(document.getElementById('modal-family-adults').value) || 1,
-                kids: parseInt(document.getElementById('modal-family-kids').value) || 0,
-                members: document.getElementById('modal-family-members').value,
+                name: famName,
+                phone: famPhone,
+                adults: famAdults,
+                kids: famKids,
+                members: famMembers,
                 status: 'pendiente'
             };
+            families.unshift(newFam);
 
-            await supabaseClient.from('families').insert(newFam);
-            modalFam.style.display = 'none';
+            if (famMembers) {
+                famMembers.split(',').forEach(mName => {
+                    const cleanName = mName.trim();
+                    if (cleanName) {
+                        persons.unshift({
+                            id: 'p_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+                            family_id: newFam.id,
+                            family_name: famName,
+                            name: cleanName,
+                            type: 'Adulto',
+                            status: 'pendiente',
+                            checked_in: false,
+                            table_id: null,
+                            seat: null
+                        });
+                    }
+                });
+            }
+
+            if (modalFam) modalFam.style.display = 'none';
             formFamily.reset();
-            fetchAllData();
-        };
-    }
-
-    // Cargar Excel de Pases a Supabase
-    const fileInput = document.getElementById('excel-file-input');
-    if (fileInput) {
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = async (evt) => {
-                const data = new Uint8Array(evt.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
-
-                for (let idx = 0; idx < jsonData.length; idx++) {
-                    const row = jsonData[idx];
-                    await supabaseClient.from('families').insert({
-                        id: 'fam_' + Date.now() + '_' + idx,
-                        name: row['Familia'] || row['Nombre'] || 'Familia ' + (idx + 1),
-                        phone: row['Telefono'] || row['Teléfono'] || '',
-                        adults: parseInt(row['Adultos']) || 1,
-                        kids: parseInt(row['Niños'] || row['Ninos']) || 0,
-                        members: row['Nombres'] || row['Integrantes'] || '',
-                        status: 'pendiente'
-                    });
-                }
-
-                fetchAllData();
-                alert(`¡Se cargaron ${jsonData.length} pases familiares en Supabase!`);
-            };
-            reader.readAsArrayBuffer(file);
-        });
-    }
-
-    // Exportadores
-    if (document.getElementById('btn-export-pases')) {
-        document.getElementById('btn-export-pases').onclick = () => {
-            const exportData = families.map(f => ({
-                'Familia / Pase': f.name,
-                'Teléfono': f.phone,
-                'Integrantes': f.members,
-                'Adultos': f.adults,
-                'Niños': f.kids,
-                'Estado': f.status,
-                'Enlace': `${window.location.origin}/invitacion.html?to=${f.id}`
-            }));
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Pases Familares");
-            XLSX.writeFile(wb, "Pases_Familiares_Evento.xlsx");
-        };
-    }
-
-    if (document.getElementById('btn-export-excel')) {
-        document.getElementById('btn-export-excel').onclick = () => {
-            const exportData = persons.map(p => ({
-                'Nombre Persona': p.name,
-                'Familia': p.family_name,
-                'Asiste': p.status,
-                'En Fiesta (Check-in)': p.checked_in ? 'Sí' : 'No'
-            }));
-            const ws = XLSX.utils.json_to_sheet(exportData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "Personas Confirmadas");
-            XLSX.writeFile(wb, "Lista_Personas_Evento.xlsx");
+            renderAll();
         };
     }
 
@@ -326,7 +251,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const unassigned = persons.filter(p => p.status === 'confirmado' && !p.table_id);
         if (unassigned.length === 0) {
-            container.innerHTML = '<small style="color: #1e824c;">No hay personas pendientes por sentar.</small>';
+            container.innerHTML = '<small style="color: #1e824c;">¡Todas las personas confirmadas están sentadas!</small>';
             return;
         }
 
@@ -335,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.className = 'guest-card';
             card.draggable = true;
             card.setAttribute('data-id', p.id);
-            card.innerHTML = `<strong>${p.name}</strong> <small>${p.type || 'Adulto'} (${p.family_name || 'Familia'})</small>`;
+            card.innerHTML = `<strong>${p.name}</strong> <small>${p.type} (${p.family_name})</small>`;
 
             card.addEventListener('dragstart', (e) => {
                 draggedPersonId = p.id;
@@ -351,12 +276,11 @@ document.addEventListener('DOMContentLoaded', () => {
             id: 'table_' + Date.now(),
             name: `Mesa ${tables.length + 1}`,
             type: type,
-            top: 50 + (tables.length * 20),
-            left: 50 + (tables.length * 20),
+            top: 50 + (tables.length * 30),
+            left: 50 + (tables.length * 30),
             capacity: 10
         };
         tables.push(newTable);
-        localStorage.setItem('franyeli_tables', JSON.stringify(tables));
         renderAll();
     }
 
@@ -386,7 +310,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (assigned) {
                     label = showFullNames ? assigned.name.substring(0, 4) : assigned.name.charAt(0).toUpperCase();
-                    title = `${assigned.name} (${assigned.family_name || ''}) - Clic para liberar`;
+                    title = `${assigned.name} (${assigned.family_name}) - Clic para liberar`;
                 }
 
                 seatsHtml += `<div class="seat ${assigned ? 'occupied' : ''}" data-table="${t.id}" data-seat="${i}" data-person="${assigned ? assigned.id : ''}" title="${title}">${label}</div>`;
@@ -399,33 +323,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
             tableDiv.querySelectorAll('.seat').forEach(s => {
                 s.addEventListener('dragover', (e) => e.preventDefault());
-                s.addEventListener('drop', async (e) => {
+                s.addEventListener('drop', (e) => {
                     e.preventDefault();
                     const tableId = s.getAttribute('data-table');
                     const seatNum = parseInt(s.getAttribute('data-seat'));
 
                     if (draggedPersonId) {
-                        await supabaseClient
-                            .from('persons')
-                            .update({ table_id: tableId, seat: seatNum })
-                            .eq('id', draggedPersonId);
-
-                        draggedPersonId = null;
-                        fetchAllData();
+                        const person = persons.find(p => p.id === draggedPersonId);
+                        if (person) {
+                            person.table_id = tableId;
+                            person.seat = seatNum;
+                            draggedPersonId = null;
+                            renderAll();
+                        }
                     }
                 });
 
-                s.addEventListener('click', async () => {
+                s.addEventListener('click', () => {
                     const personId = s.getAttribute('data-person');
                     if (personId) {
                         const person = persons.find(p => p.id === personId);
                         if (person && confirm(`¿Deseas quitar a ${person.name} de esta mesa?`)) {
-                            await supabaseClient
-                                .from('persons')
-                                .update({ table_id: null, seat: null })
-                                .eq('id', personId);
-
-                            fetchAllData();
+                            person.table_id = null;
+                            person.seat = null;
+                            renderAll();
                         }
                     }
                 });
@@ -448,7 +369,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.onmousemove = null;
                 tableObj.top = elm.offsetTop;
                 tableObj.left = elm.offsetLeft;
-                localStorage.setItem('franyeli_tables', JSON.stringify(tables));
+                saveData();
             };
             document.onmousemove = (e) => {
                 e.preventDefault();
@@ -466,6 +387,5 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.getElementById(id)) document.getElementById(id).onchange = renderTablesOnCanvas;
     });
 
-    // Iniciar consulta de datos
-    fetchAllData();
+    renderAll();
 });
