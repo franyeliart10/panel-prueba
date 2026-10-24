@@ -90,8 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         families.forEach((f) => {
             const tr = document.createElement('tr');
-            const baseUrl = window.location.origin + window.location.pathname.replace('index.html', '');
-            const link = `${baseUrl}invitacion.html?to=${f.id}`;
+            const currentPath = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
+            const link = `${currentPath}invitacion.html?to=${f.id}`;
             const statusTag = f.status === 'confirmado' ? '✅ Confirmado' :
                               f.status === 'pendiente' ? '⏳ Pendiente' : '❌ Rechazado';
 
